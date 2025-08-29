@@ -1,79 +1,143 @@
-name: Build and Release Extensions
+name: Extension Release
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Get version from manifest
-        id: get_version
-        run: |
-          VERSION=$(node -p "require('./manifest.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Prepare Chrome extension
-        run: |
-          # Create a directory for Chrome extension
-          mkdir -p build/chrome
-          # Copy all files except Firefox manifest
-          cp content.js icon*.png README.md build/chrome/
-          # Copy Chrome manifest as manifest.json
-          cp manifest.json build/chrome/manifest.json
-
-      - name: Prepare Firefox extension
-        run: |
-          # Create a directory for Firefox extension
-          mkdir -p build/firefox
-          # Copy all files except Chrome manifest
-          cp content.js icon*.png README.md build/firefox/
-          # Copy Firefox manifest as manifest.json
-          cp manifest_firefox.json build/firefox/manifest.json
-
-      - name: Create Chrome ZIP
-        run: |
-          cd build/chrome
-          zip -r ../shiba-stats-chrome-${{ env.VERSION }}.zip .
-
-      - name: Create Firefox ZIP
-        run: |
-          cd build/firefox
-          zip -r ../shiba-stats-firefox-${{ env.VERSION }}.zip .
-
-      - name: Create Release
-        uses: actions/create-release@v1
-        id: create_release
-        with:
-          tag_name: v${{ env.VERSION }}
-          release_name: Release v${{ env.VERSION }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Chrome Extension
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/shiba-stats-chrome-${{ env.VERSION }}.zip
-          asset_name: shiba-stats-chrome-${{ env.VERSION }}.zip
-          asset_content_type: application/zip
-
-      - name: Upload Firefox Extension
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/shiba-stats-firefox-${{ env.VERSION }}.zip
-          asset_name: shiba-stats-firefox-${{ env.VERSION }}.zip
-          asset_content_type: application/zip
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 'lts/*'
+    
+    - name: Get version from manifests
+      id: get_version
+      run: |
+        # Get version from Chrome manifest (manifest.json)
+        CHROME_VERSION=$(grep '"version"' manifest.json | sed -E 's/.*"version": "([^"]+)".*/\1/')
+        # Get version from Firefox manifest (manifest_firefox.json)
+        FIREFOX_VERSION=$(grep '"version"' manifest_firefox.json | sed -E 's/.*"version": "([^"]+)".*/\1/')
+        
+        # Use Chrome version as primary (assuming they should match)
+        VERSION=$CHROME_VERSION
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "CHROME_VERSION=$CHROME_VERSION" >> $GITHUB_ENV
+        echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> $GITHUB_ENV
+        
+        # Warn if versions don't match
+        if [ "$CHROME_VERSION" != "$FIREFOX_VERSION" ]; then
+          echo "⚠️ Warning: Chrome version ($CHROME_VERSION) != Firefox version ($FIREFOX_VERSION)"
+        fi
+    
+    - name: Delete existing release if it exists
+      run: |
+        if gh release view "v${{ env.VERSION }}" >/dev/null 2>&1; then
+          echo "🗑️ Deleting existing release v${{ env.VERSION }}..."
+          gh release delete "v${{ env.VERSION }}" --yes
+          echo "✅ Existing release deleted"
+        else
+          echo "ℹ️ No existing release found for v${{ env.VERSION }}"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build Chrome extension package
+      run: |
+        echo "Building Chrome extension..."
+        
+        mkdir -p temp-chrome-extension
+        
+        # Copy files for Chrome (uses manifest.json)
+        cp manifest.json temp-chrome-extension/
+        [ -f content.js ] && cp content.js temp-chrome-extension/
+        [ -f icon32.png ] && cp icon32.png temp-chrome-extension/
+        [ -f icon64.png ] && cp icon64.png temp-chrome-extension/
+        [ -f icon128.png ] && cp icon128.png temp-chrome-extension/
+        [ -f README.md ] && cp README.md temp-chrome-extension/
+        
+        # Create Chrome ZIP
+        cd temp-chrome-extension
+        zip -r ../shiba-stats-chrome-v${{ env.VERSION }}.zip .
+        cd ..
+        
+        # Clean up
+        rm -rf temp-chrome-extension
+        
+        echo "✅ Chrome extension packaged: shiba-stats-chrome-v${{ env.VERSION }}.zip"
+    
+    - name: Build Firefox extension package
+      run: |
+        echo "Building Firefox extension..."
+        
+        # Create temporary directory for Firefox extension
+        mkdir -p temp-firefox-extension
+        
+        # Copy files for Firefox (uses manifest_firefox.json renamed to manifest.json)
+        cp manifest_firefox.json temp-firefox-extension/manifest.json
+        [ -f content.js ] && cp content.js temp-firefox-extension/
+        [ -f icon32.png ] && cp icon32.png temp-firefox-extension/
+        [ -f icon64.png ] && cp icon64.png temp-firefox-extension/
+        [ -f icon128.png ] && cp icon128.png temp-firefox-extension/
+        [ -f README.md ] && cp README.md temp-firefox-extension/
+        
+        # Create Firefox ZIP
+        cd temp-firefox-extension
+        zip -r ../shiba-stats-firefox-v${{ env.VERSION }}.zip .
+        cd ..
+        
+        # Clean up
+        rm -rf temp-firefox-extension
+        
+        echo "✅ Firefox extension packaged: shiba-stats-firefox-v${{ env.VERSION }}.zip"
+    
+    - name: Upload Chrome extension artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: shiba-stats-chrome-v${{ env.VERSION }}
+        path: shiba-stats-chrome-v${{ env.VERSION }}.zip
+        retention-days: 30
+    
+    - name: Upload Firefox extension artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: shiba-stats-firefox-v${{ env.VERSION }}
+        path: shiba-stats-firefox-v${{ env.VERSION }}.zip
+        retention-days: 30
+    
+    - name: Create unified release
+      run: |
+        echo "🚀 Creating unified release v${{ env.VERSION }}..."
+        
+        gh release create "v${{ env.VERSION }}" \
+          --title "Shiba Stats v${{ env.VERSION }} - Chrome & Firefox" \
+          --notes "Release v${{ env.VERSION }} of Shiba Stats Extension for Chrome and Firefox" \
+          shiba-stats-chrome-v${{ env.VERSION }}.zip \
+          shiba-stats-firefox-v${{ env.VERSION }}.zip
+        
+        echo "✅ Release created successfully!"
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ env.VERSION }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Summary
+      run: |
+        echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Version**: v${{ env.VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Chrome Extension**: shiba-stats-chrome-v${{ env.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Firefox Extension**: shiba-stats-firefox-v${{ env.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 **Release URL**: https://github.com/${{ github.repository }}/releases/tag/v${{ env.VERSION }}" >> $GITHUB_STEP_SUMMARY
