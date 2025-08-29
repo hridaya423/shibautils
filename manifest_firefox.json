@@ -1,0 +1,18 @@
+{
+  "manifest_version": 2,
+  "name": "Shiba Stats Extension",
+  "version": "1.0",
+  "description": "Shows useful stats on Shiba website",
+  "icons": {
+    "32": "icon32.png",
+    "64": "icon64.png",
+    "128": "icon128.png"
+  },
+  "permissions": ["activeTab"],
+  "content_scripts": [
+    {
+      "matches": ["https://shiba.hackclub.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

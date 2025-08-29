@@ -1,0 +1,79 @@
+name: Build and Release Extensions
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get version from manifest
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Prepare Chrome extension
+        run: |
+          # Create a directory for Chrome extension
+          mkdir -p build/chrome
+          # Copy all files except Firefox manifest
+          cp content.js icon*.png README.md build/chrome/
+          # Copy Chrome manifest as manifest.json
+          cp manifest.json build/chrome/manifest.json
+
+      - name: Prepare Firefox extension
+        run: |
+          # Create a directory for Firefox extension
+          mkdir -p build/firefox
+          # Copy all files except Chrome manifest
+          cp content.js icon*.png README.md build/firefox/
+          # Copy Firefox manifest as manifest.json
+          cp manifest_firefox.json build/firefox/manifest.json
+
+      - name: Create Chrome ZIP
+        run: |
+          cd build/chrome
+          zip -r ../shiba-stats-chrome-${{ env.VERSION }}.zip .
+
+      - name: Create Firefox ZIP
+        run: |
+          cd build/firefox
+          zip -r ../shiba-stats-firefox-${{ env.VERSION }}.zip .
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          tag_name: v${{ env.VERSION }}
+          release_name: Release v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Chrome Extension
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/shiba-stats-chrome-${{ env.VERSION }}.zip
+          asset_name: shiba-stats-chrome-${{ env.VERSION }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Firefox Extension
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/shiba-stats-firefox-${{ env.VERSION }}.zip
+          asset_name: shiba-stats-firefox-${{ env.VERSION }}.zip
+          asset_content_type: application/zip
