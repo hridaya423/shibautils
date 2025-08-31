@@ -394,6 +394,8 @@ function processShopItems() {
     const price = parseFloat(priceElement.textContent.trim());
     if (isNaN(price)) return;
     
+    const percentage = Math.min(100, Math.floor((totalCurrentSSS / price) * 100));
+    
     const sssNeeded = Math.max(0, price - totalCurrentSSS);
     const playtestsNeeded = Math.ceil(sssNeeded / avgSSSPerPlaytest);
     
@@ -427,6 +429,7 @@ function processShopItems() {
     
     if (sssNeeded > 0) {
       estimate.innerHTML = `
+        <div>Progress: ${percentage}%</div>
         <div>🚢 ${playtestsNeeded} playtests needed</div>
         <div>⏰ ${additionalHours}h ${additionalMinutes}m more work</div>
         <div style="font-size: 10px; color: #777;">Total: ${totalHours}h ${totalMinutes}m</div>
@@ -437,7 +440,8 @@ function processShopItems() {
       const itemMinutes = Math.round((hoursForThisItem % 1) * 60);
       
       estimate.innerHTML = `
-        <div style="color: #28a745;">✅ Can afford now!</div>
+        <div>Progress: 100% ✅</div>
+        <div style="color: #28a745;">Can afford now!</div>
         <div style="font-size: 10px; color: #777;">~${itemHours}h ${itemMinutes}m worth of work</div>
       `;
     }
