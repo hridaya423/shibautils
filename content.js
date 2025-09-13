@@ -71,7 +71,8 @@ function setupRequestInterception() {
                 
                 const schedule = {
                   ships: ships.map(ship => ({
-                    moment: moments.find(m => m.isDemo),
+                    moment: moments.find(m => m.isDemo && new Date(m.timestamp).getTime() === new Date(ship.createdAt).getTime()) ||
+                            moments.find(m => m.isDemo),
                     cumulativeMinutes: ship.hoursAtShip * 60,
                     block: Math.floor((ship.hoursAtShip * 60) / 600),
                     playtestsEarned: ship.playtestsEarned
@@ -350,31 +351,38 @@ async function scanCurrentGamePage() {
 function calculateShopEstimates() {
   const shippingData = JSON.parse(localStorage.getItem('shibaShippingData') || '{}');
   const gameStats = JSON.parse(localStorage.getItem('shibaGameStats') || '{}');
-  
+
   let totalCurrentSSS = 0;
   let totalPlaytests = 0;
-  let avgSSSPerPlaytest = 0;
-  
+  let validGames = 0;
+  let totalSSSPerPlaytest = 0;
+
   for (const [gameName, data] of Object.entries(shippingData)) {
     if (data.schedule && gameStats[gameName]) {
       const playtests = data.schedule.playtestCount;
       const sssPerPlaytest = gameStats[gameName].averageSSSPerPlaytest;
-      totalCurrentSSS += playtests * sssPerPlaytest;
-      totalPlaytests += playtests;
+
+      if (sssPerPlaytest > 0 && playtests > 0) {
+        totalCurrentSSS += playtests * sssPerPlaytest;
+        totalPlaytests += playtests;
+        totalSSSPerPlaytest += sssPerPlaytest;
+        validGames++;
+      }
     }
   }
-  
-  if (totalPlaytests > 0) {
-    avgSSSPerPlaytest = totalCurrentSSS / totalPlaytests;
+
+  let avgSSSPerPlaytest = 0;
+  if (validGames > 0) {
+    avgSSSPerPlaytest = totalSSSPerPlaytest / validGames;
   } else {
-    const games = Object.values(gameStats);
-    if (games.length > 0) {
-      avgSSSPerPlaytest = games.reduce((sum, game) => sum + game.averageSSSPerPlaytest, 0) / games.length;
+    const validGameStats = Object.values(gameStats).filter(game => game.averageSSSPerPlaytest > 0);
+    if (validGameStats.length > 0) {
+      avgSSSPerPlaytest = validGameStats.reduce((sum, game) => sum + game.averageSSSPerPlaytest, 0) / validGameStats.length;
     } else {
       avgSSSPerPlaytest = 12.5;
     }
   }
-  
+
   return { totalCurrentSSS, avgSSSPerPlaytest };
 }
 
