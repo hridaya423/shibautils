@@ -1,11 +1,24 @@
 let interceptedGameData = null;
+let interceptedProfileData = null;
 
 function setupRequestInterception() {
   const originalFetch = window.fetch;
   window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
     
-    if (args[0]?.includes?.('/api/GetMyGames') || 
+    if (args[0]?.includes?.('/api/GetMyProfile') ||
+        (typeof args[0] === 'string' && args[0].includes('GetMyProfile'))) {
+
+      const responseClone = response.clone();
+      try {
+        const data = await responseClone.json();
+        interceptedProfileData = data;
+      } catch (error) {
+        console.error(`Shiba Utils Profile: ${error}`)
+      }
+    }
+
+    if (args[0]?.includes?.('/api/GetMyGames') ||
         (typeof args[0] === 'string' && args[0].includes('GetMyGames'))) {
       
       const responseClone = response.clone();
@@ -110,6 +123,15 @@ function setupRequestInterception() {
   };
   
   XMLHttpRequest.prototype.send = function(...args) {
+    if (this._url?.includes?.('GetMyProfile')) {
+      this.addEventListener('load', function() {
+        try {
+          const data = JSON.parse(this.responseText);
+          interceptedProfileData = data;
+        } catch (error) {
+        }
+      });
+    }
     if (this._url?.includes?.('GetMyGames')) {
       this.addEventListener('load', function() {
         try {
@@ -353,34 +375,28 @@ function calculateShopEstimates() {
   const gameStats = JSON.parse(localStorage.getItem('shibaGameStats') || '{}');
 
   let totalCurrentSSS = 0;
-  let totalPlaytests = 0;
-  let validGames = 0;
-  let totalSSSPerPlaytest = 0;
-
-  for (const [gameName, data] of Object.entries(shippingData)) {
-    if (data.schedule && gameStats[gameName]) {
-      const playtests = data.schedule.playtestCount;
-      const sssPerPlaytest = gameStats[gameName].averageSSSPerPlaytest;
-
-      if (sssPerPlaytest > 0 && playtests > 0) {
-        totalCurrentSSS += playtests * sssPerPlaytest;
-        totalPlaytests += playtests;
-        totalSSSPerPlaytest += sssPerPlaytest;
-        validGames++;
+  if (interceptedProfileData && interceptedProfileData.SSSBalance !== undefined) {
+    totalCurrentSSS = interceptedProfileData.SSSBalance;
+  } else {
+    let validGames = 0;
+    for (const [gameName, data] of Object.entries(shippingData)) {
+      if (data.schedule && gameStats[gameName]) {
+        const playtests = data.schedule.playtestCount;
+        const sssPerPlaytest = gameStats[gameName].averageSSSPerPlaytest;
+        if (sssPerPlaytest > 0 && playtests > 0) {
+          totalCurrentSSS += playtests * sssPerPlaytest;
+          validGames++;
+        }
       }
     }
   }
 
   let avgSSSPerPlaytest = 0;
-  if (validGames > 0) {
-    avgSSSPerPlaytest = totalSSSPerPlaytest / validGames;
+  const validGameStats = Object.values(gameStats).filter(game => game.averageSSSPerPlaytest > 0);
+  if (validGameStats.length > 0) {
+    avgSSSPerPlaytest = validGameStats.reduce((sum, game) => sum + game.averageSSSPerPlaytest, 0) / validGameStats.length;
   } else {
-    const validGameStats = Object.values(gameStats).filter(game => game.averageSSSPerPlaytest > 0);
-    if (validGameStats.length > 0) {
-      avgSSSPerPlaytest = validGameStats.reduce((sum, game) => sum + game.averageSSSPerPlaytest, 0) / validGameStats.length;
-    } else {
-      avgSSSPerPlaytest = 12.5;
-    }
+    avgSSSPerPlaytest = 15;
   }
 
   return { totalCurrentSSS, avgSSSPerPlaytest };
